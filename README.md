@@ -7,10 +7,9 @@ The project consists in the creation of a deep learning model that, given the st
 * We merged the data into a unique pandas dataframe by addressing the problems of some footbalers' names that are spelled differently in the two datasets.
 
 ## The next steps:
-* Insert data about the Serie A table of the teams in the dataframe
 * Create the time series from the evolution of each player and each team in the different stats and grades
 
-* Look/Create a model that gives a performance score to each team to understand how difficukt it is to have it as an opponent and insert this difficulty score in the dataframe
+* Look/Create a model that gives a performance score to each team to understand how difficult it is to have it as an opponent and insert this difficulty score in the dataframe
 * Create the baseline model (simple moving average) on the Fantacalcio grades
 * Create the LSTM model from the time series and evaluate it
 * Create the GRU model from the time series and evaluate it

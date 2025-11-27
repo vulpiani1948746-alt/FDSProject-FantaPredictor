@@ -14,17 +14,17 @@ def fanta_scraper(output_folder, season):
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
 
+    headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Referer": "https://www.fantacalcio.it/voti-fantacalcio-serie-a",
+            "Cookie": COOKIE
+        }
+    
     print(f"⬇️  Inizio download per la stagione ID {SEASON_ID}...\n")
 
     for giornata in range(1, TOTAL_MATCHDAYS + 1):
         url = f"{BASE_URL}/{SEASON_ID}/{giornata}"
         filename = os.path.join(output_folder, f"Voti_Giornata_{giornata}.xlsx")
-        
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Referer": "https://www.fantacalcio.it/voti-fantacalcio-serie-a",
-            "Cookie": COOKIE
-        }
 
         try:
             response = requests.get(url, headers=headers)
@@ -45,17 +45,45 @@ def fanta_scraper(output_folder, season):
         except Exception as e:
             print(f"⚠️  Errore: {e}")
         time.sleep(1)
+    url_quotazioni = f"https://www.fantacalcio.it/api/v1/Excel/prices/{SEASON_ID}/1"
+    filename_quotazioni = os.path.join(output_folder, "Fantavalori.xlsx")
+
+    try:
+        response = requests.get(url_quotazioni, headers=headers)
+        
+        if response.status_code == 200:
+            if len(response.content) > 1000:
+                with open(filename_quotazioni, "wb") as f:
+                    f.write(response.content)
+                print(f"✅ Quotazioni scaricate correttamente in: {filename_quotazioni}")
+            else:
+                print(f"⚠️  File quotazioni vuoto o troppo piccolo.")
+        elif response.status_code == 404:
+            print(f"❌ File quotazioni non trovato (404).")
+        else:
+            print(f"❌ Errore download quotazioni: {response.status_code}")
+            
+    except Exception as e:
+        print(f"⚠️  Errore nel download delle quotazioni: {e}")
+
     print("\n🏁 Processo terminato.")
 
 
 def clean_fantacalcio_data(df, vote_column_name):
-    """Pulisce il DataFrame grezzo di Fantacalcio.it ed estrae la Squadra"""
+    """
+    Pulisce il DataFrame grezzo di Fantacalcio.it, estrae i Bonus 
+    e calcola il Fantavoto.
+    """
     
     mask_team = df.iloc[:, 1].isna()
-    
     df['Squadra'] = df.iloc[:, 0].where(mask_team).ffill()
     
-    df = df.rename(columns={0: 'Cod', 1: 'Ruolo', 2: 'Nome', 3: 'Voto'})
+    col_map = {
+        0: 'Cod', 1: 'Ruolo', 2: 'Nome', 3: 'Voto',
+        4: 'Gf', 5: 'Gs', 6: 'Rp', 7: 'Rs', 8: 'Rf', 9: 'Au', 
+        10: 'Amm', 11: 'Esp', 12: 'Ass'
+    }
+    df = df.rename(columns=col_map)
 
     df = df[pd.to_numeric(df['Cod'], errors='coerce').notnull()]
     df['Cod'] = df['Cod'].astype(int)
@@ -67,7 +95,28 @@ def clean_fantacalcio_data(df, vote_column_name):
     
     df['Squadra'] = df['Squadra'].astype(str).str.strip()
     
-    return df[['Cod', 'Ruolo', 'Nome', 'Squadra', vote_column_name]]
+    bonus_cols = ['Gf', 'Gs', 'Rp', 'Rs', 'Rf', 'Au', 'Amm', 'Esp', 'Ass']
+    for col in bonus_cols:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+    
+    df['Rigori_Sbagliati'] = df['Rs'] + df['Rp']
+    
+    voto_numeric = df[vote_column_name].astype(str).str.replace('*', '', regex=False)
+    voto_numeric = pd.to_numeric(voto_numeric, errors='coerce')
+    
+    df['Fantavoto'] = voto_numeric + \
+                      (df['Gf'] * 3) + \
+                      (df['Rf'] * 3) + \
+                      (df['Rp'] * 3) + \
+                      (df['Ass'] * 1) - \
+                      (df['Gs'] * 1) - \
+                      (df['Au'] * 2) - \
+                      (df['Rs'] * 3) - \
+                      (df['Amm'] * 0.5) - \
+                      (df['Esp'] * 1)
+
+    return df[['Cod', 'Ruolo', 'Nome', 'Squadra', vote_column_name, 'Au', 'Rigori_Sbagliati', 'Fantavoto']]
 
 
 def single_file(file_path):
@@ -102,6 +151,55 @@ def single_file(file_path):
         return pd.DataFrame()
 
 
+def integra_quotazioni_per_codice(df_fanta, path_quotazioni):
+    """
+    Carica il file Excel delle quotazioni (fogli 'Tutti' e 'Ceduti')
+    e unisce la colonna 'Qt.I' al dataframe dei voti usando il 'Cod' (Id).
+    """
+    
+    try:
+        df_tutti = pd.read_excel(path_quotazioni, sheet_name='Tutti', header=1)
+        
+        try:
+            df_ceduti = pd.read_excel(path_quotazioni, sheet_name='Ceduti', header=1)
+            df_valori = pd.concat([df_tutti, df_ceduti], ignore_index=True)
+        except:
+            print("⚠️ Foglio 'Ceduti' non trovato, uso solo 'Tutti'.")
+            df_valori = df_tutti
+
+        df_valori.columns = df_valori.columns.str.strip()
+        
+        col_qt_i = None
+        for col in df_valori.columns:
+            if "Qt" in col and "I" in col: 
+                col_qt_i = col
+                break
+        
+        if not col_qt_i:
+            print("❌ Errore: Colonna 'Qt.I' non trovata nel file valori.")
+            return df_fanta
+
+        df_valori_clean = df_valori[['Id', col_qt_i]].copy()
+        df_valori_clean = df_valori_clean.rename(columns={'Id': 'Cod', col_qt_i: 'Qt.I'})
+        
+        df_valori_clean['Cod'] = pd.to_numeric(df_valori_clean['Cod'], errors='coerce')
+        df_valori_clean = df_valori_clean.dropna(subset=['Cod'])
+        df_valori_clean['Cod'] = df_valori_clean['Cod'].astype(int)
+        
+        df_valori_clean = df_valori_clean.drop_duplicates(subset=['Cod'])
+
+        df_merged = df_fanta.merge(df_valori_clean, on='Cod', how='left')
+        
+        df_merged['Qt.I'] = df_merged['Qt.I'].fillna(1).astype(int)
+        
+        print(f"✅ Quotazioni unite con successo! Righe totali: {len(df_merged)}")
+        return df_merged
+
+    except Exception as e:
+        print(f"❌ Errore critico nell'integrazione quotazioni: {e}")
+        return df_fanta
+
+
 def extract_fanta(folder, season):
     base_folder = os.path.join(folder, f"voti_fanta_{season}") 
     os.makedirs(base_folder, exist_ok=True)
@@ -122,7 +220,10 @@ def extract_fanta(folder, season):
     
     if all_dfs:
         total_df = pd.concat(all_dfs, ignore_index=True)
-        total_df.to_excel(os.path.join(folder, "Fanta_Total.xlsx"),index=False)
-        return total_df
+
+        file_quotazioni = os.path.join(base_folder, "Fantavalori.xlsx")
+        final_df = integra_quotazioni_per_codice(total_df, file_quotazioni)
+        final_df.to_excel(os.path.join(folder, "Fanta_Total.xlsx"),index=False)
+        return final_df
     else:
         return pd.DataFrame()

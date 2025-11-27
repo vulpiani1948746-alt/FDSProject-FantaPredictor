@@ -232,6 +232,7 @@ def clean_merged(df):
 
     rename_map = {
         'Cod': 'Player_id',
+        'home': 'Is_Home',
         'Nome': 'Name',
         'Squadra': 'Team',
         'Ruolo': 'Pos',
@@ -247,19 +248,22 @@ def clean_merged(df):
         'Goals': 'Team_Goals',  
         'Goals_Ag': 'Opp_Goals',
         'xG': 'Team_xG',        
-        'xG_Ag': 'Opp_xG'       
+        'xG_Ag': 'Opp_xG',
+        'Au': 'Autogoal',
+        'Rigori_Sbagliati': 'Missed_Pen',
+        'Qt.I': 'Value'   
     }
     df = df.rename(columns=rename_map)
 
     final_order = [
-        'Player_id', 'Name', 'Team', 'Pos', 'Age', 'Opponent', 'Week_id', 
-        'Min', 'Player_Goals', 'Ast', 'PK', 'PKatt', 'Shots', 'SoT', 
+        'Player_id', 'Name', 'Team', 'Is_Home', 'Pos', 'Age', 'Value', 'Opponent', 'Week_id', 
+        'Min', 'Player_Goals', 'Ast', 'Autogoal', 'Missed_Pen', 'PK', 'PKatt', 'Shots', 'SoT', 
         'CardY', 'CardR', 'Touches', 'Tkl', 'Int', 'Blocks', 
         'Player_xG', 'Player_npxG', 'Player_xAST', 
         'SCA', 'GCA', 'Cmp_x', 'Att_x', 'Cmp%_x', 'PrgP', 'Carries', 'PrgC', 
         'Att_x.1', 'Succ', 'game_id', 
         'Team_Goals', 'Opp_Goals', 'Team_xG', 'Opp_xG', 
-        'Voto_Fantacalcio', 'Voto_Statistico', 'Voto_Italia', 'sv'
+        'Voto_Fantacalcio', 'Voto_Statistico', 'Voto_Italia', 'sv', 'Fantavoto'
     ]
     df = df[final_order]
 
@@ -273,7 +277,7 @@ def return_final_dataframe(season, folder, league = "Serie-A"):
 
     df_fanta, df_stats = prepare_dataframes(df_fanta, df_stats)
 
-    print("Find Matches between the two datframes...")
+    print("Find Matches between the two dataframes...")
     df_matches = find_matches2(df_fanta, df_stats, replacements)
 
     find_problems(df_matches, df_stats)

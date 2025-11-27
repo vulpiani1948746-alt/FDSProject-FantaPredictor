@@ -128,6 +128,39 @@ def clean_team(df):
     return df
 
 
+def add_league_position(df):
+    df_calc = df.copy()
+
+    conditions = [
+        (df_calc['Goals'] > df_calc['Goals_Ag']), 
+        (df_calc['Goals'] == df_calc['Goals_Ag']) 
+    ]
+    choices = [3, 1]
+    
+    df_calc['Match_Points'] = np.select(conditions, choices, default=0)
+    
+    df_calc['Match_GD'] = df_calc['Goals'] - df_calc['Goals_Ag']
+
+    df_calc = df_calc.sort_values(['Team_Name', 'Wk'])
+    
+    df_calc['Cum_Points'] = df_calc.groupby('Team_Name')['Match_Points'].cumsum()
+    df_calc['Cum_GD'] = df_calc.groupby('Team_Name')['Match_GD'].cumsum()
+    df_calc['Cum_Goals'] = df_calc.groupby('Team_Name')['Goals'].cumsum()
+
+    df_calc = df_calc.sort_values(
+        ['Wk', 'Cum_Points', 'Cum_GD', 'Cum_Goals'], 
+        ascending=[True, False, False, False]
+    )
+
+    df_calc['League_Pos'] = df_calc.groupby('Wk').cumcount() + 1
+
+    final_ranking = df_calc[['game_id', 'Team_Name', 'League_Pos']]
+    
+    df_out = df.merge(final_ranking, on=['game_id', 'Team_Name'], how='left')
+    
+    return df_out
+
+
 def clean_players(df):
     cols_to_drop = [
         '#',
@@ -164,6 +197,7 @@ def initial_data(season, folder, league = "Serie-A"):
     df_teams, df_players = merge_data_teams(season, folder, league)
 
     df_teams = clean_team(df_teams)
+    df_teams = add_league_position(df_teams)
     df_players = clean_players(df_players)
 
     pd.set_option('display.max_columns', None)

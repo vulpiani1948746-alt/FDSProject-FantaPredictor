@@ -15,7 +15,6 @@ final_folder = os.path.join(FOLDER, f"season{SEASON}")
 os.makedirs(final_folder, exist_ok=True)
 
 ### COMMENT OUT THIS PART FOR THE RE-RUNS -----------
-
 print("Scrape Data, create files and DatFrame for Fantasy Football...")
 print("Change the Cookie before doing this!!!")
 df_fanta = extract_fanta(final_folder, SEASON)
@@ -27,7 +26,6 @@ print("-" * 50)
 print("\n")
 #time.sleep(10)
 
-
 print("Scrape Data, create file and DataFrame for stats of players...")
 main_scraper(SEASON, final_folder)
 ### UNTIL HERE -------------------------------
@@ -35,10 +33,11 @@ main_scraper(SEASON, final_folder)
 df_teams, df_stats = initial_data(SEASON, final_folder)
 
 print("DataFrame of Teams\n")
-print(df_teams.head(20))
+print(df_teams.tail(20))
 print("-" * 50)
 print("\n")
 #time.sleep(10)
+
 
 print("DataFrame of players\n")
 print(df_stats.head(20))
@@ -49,5 +48,6 @@ print("\n")
 
 print("Let's merge the two DataFrames...")
 df_final = return_final_dataframe(SEASON, final_folder)
+df_final.to_pickle(os.path.join(final_folder, "FinalDF.pkl"))
 print(df_final[:20])
 print("-" * 50)

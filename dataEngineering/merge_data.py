@@ -20,13 +20,19 @@ replacements = {
         "Andrea Belotti": "Belotti A.",
         "Ebenezer Akinsanmiro": "Akinsamiro",
         "Simeon Nwankwo": "Simy",
-        "Pablo Galdames Millán": "Galdames", # Genoa
-        "Pepín": "Machin",                 # Monza (spesso MACHIN o PEPIN) - Controlla se è MACHIN
+        "Pablo Galdames Millán": "Galdames",
+        "Pepín": "Machin",                 
         "Ruan": "Tressoldi",        
         "Seydou Fini": "Fini",   
-        "Triantafyllos Pasaridīs": "Pasalidis"
-
-        # Aggiungi qui eventuali altri nomi se escono dal find_problems
+        "Triantafyllos Pasaridīs": "Pasalidis",
+        "Brandon Soppy": "Soppy",
+        "Emanuel Aiwum": "Aiwu",
+        "Arkadiusz Reca ": "Reca",
+        "Eddie Salcedo": "Salcedo Eddy",
+        "Bjarki Bjarkason": "Bjarkason Bjarki Steinn",
+        "Samuele Ricci": "Ricci S.",
+        "Tanner Tessman": "Tessmann",
+        "Nicolas Nkoulou": "N'koulou"
     }
 
 def transliterate_name(input_str):
@@ -251,18 +257,18 @@ def clean_merged(df):
         'xG_Ag': 'Opp_xG',
         'Au': 'Autogoal',
         'Rigori_Sbagliati': 'Missed_Pen',
-        'Qt.I': 'Value'   
+        'Qt.I': 'Value',
+        'Att_x.1': 'Cross'
     }
     df = df.rename(columns=rename_map)
 
     final_order = [
-        'Player_id', 'Name', 'Team', 'Is_Home', 'Pos', 'Age', 'Value', 'Opponent', 'Week_id', 
+        'Player_id', 'Name', 'Team', 'Pos', 'Age', 'Value', 'Opponent', 'Week_id', 
         'Min', 'Player_Goals', 'Ast', 'Autogoal', 'Missed_Pen', 'PK', 'PKatt', 'Shots', 'SoT', 
         'CardY', 'CardR', 'Touches', 'Tkl', 'Int', 'Blocks', 
         'Player_xG', 'Player_npxG', 'Player_xAST', 
         'SCA', 'GCA', 'Cmp_x', 'Att_x', 'Cmp%_x', 'PrgP', 'Carries', 'PrgC', 
-        'Att_x.1', 'Succ', 'game_id', 
-        'Team_Goals', 'Opp_Goals', 'Team_xG', 'Opp_xG', 
+        'Cross', 'Succ', 'game_id',
         'Voto_Fantacalcio', 'Voto_Statistico', 'Voto_Italia', 'sv', 'Fantavoto'
     ]
     df = df[final_order]

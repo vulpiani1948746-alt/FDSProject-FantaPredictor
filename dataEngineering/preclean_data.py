@@ -48,6 +48,7 @@ def merge_data_teams(season, folder, league = "Serie-A"):
     
     try:
         df_fixtures = pd.read_csv(fixture_file)
+        df_fixtures = df_fixtures.dropna(subset=['Wk'])
         df_players = preclean_players(season, folder, league)
     except FileNotFoundError as e:
         print(f"Error: {e}")
@@ -69,7 +70,7 @@ def merge_data_teams(season, folder, league = "Serie-A"):
     full_data['Team_Name'] = np.where(full_data['Team_Name'] == "Hellas Verona", "Verona", full_data['Team_Name'])
     full_data['Opponent_Name'] = np.where(full_data['Opponent_Name'] == "Hellas Verona", "Verona", full_data['Opponent_Name'])
 
-    output_filename = f'{folder}{league.lower()}_{season.lower()}_combined_data.csv'
+    output_filename = os.path.join(folder, f'{league.lower()}_{season.lower()}_combined_data.csv')
     full_data.to_csv(output_filename, index=False)
     
     print(f"Success! Combined data saved to: {output_filename}")
@@ -109,6 +110,7 @@ def clean_team(df):
         'xG_x'
     ]
     df = df.drop(columns=cols_to_drop, errors='ignore')
+    df = df.dropna()
     df['Wk'] = df['Wk'].astype(int)
     df = df.rename(columns = {"xG_y":"xG_home", "xG.1":"xG_away"})
 
@@ -122,8 +124,22 @@ def clean_team(df):
     df['xG'] = np.where(df['home'] == 1, df['xG_home'], df['xG_away'])
     df['xG_Ag'] = np.where(df['home'] == 1, df['xG_away'], df['xG_home'])
 
-
     df = df.drop(columns=['Score', 'home_goals_temp', 'away_goals_temp', 'Gls', 'xG_away', 'xG_home'])
+
+    df['Date'] = pd.to_datetime(df['Date'])
+    start_date = '2020-05-01'
+    end_date = '2020-10-31'
+
+    df['is_empty'] = ((df['Date'] >= start_date) & (df['Date'] <= end_date)).astype(int)
+    df['Match_Goal_Diff'] = df['Goals'] - df['Goals_Ag']
+    df['xG_Diff'] = df['xG'] - df['xG_Ag']
+
+    conditions = [
+        (df['Match_Goal_Diff'] > 0),
+        (df['Match_Goal_Diff'] == 0),
+        (df['Match_Goal_Diff'] < 0)
+    ]
+    df['Match_Result'] = np.select(conditions, [1, 0, -1])
 
     return df
 
@@ -173,6 +189,8 @@ def clean_players(df):
         'season'
     ]
     df = df.drop(columns=cols_to_drop, errors='ignore')
+    df = df.dropna()
+
     df['Age'] = df['Age'].astype(str).str[:2].astype(int)
     df['Wk'] = df['Wk'].astype(int)
 
@@ -193,11 +211,79 @@ def clean_players(df):
     return df
 
 
+def calculate_team_strength(df):
+    df = df.sort_values(['Team_Name', 'Wk']).copy()
+    
+    conditions = [
+        (df['Goals'] > df['Goals_Ag']), 
+        (df['Goals'] == df['Goals_Ag'])
+    ]
+    df['Raw_Points'] = np.select(conditions, [3, 1], default=0)
+    
+    difficulty_multiplier = np.where(df['home'] == 0, 1.2, 1.0)
+    df['Adjusted_Points'] = df['Raw_Points'] * difficulty_multiplier
+    
+    df['xG_Ratio'] = df['xG'] / (df['xG'] + df['xG_Ag'] + 0.01)
+
+    
+    df['Form_Points_EMA'] = df.groupby('Team_Name')['Adjusted_Points'].transform(lambda x: x.ewm(span=5, min_periods=1).mean())
+    df['Form_xG_EMA'] = df.groupby('Team_Name')['xG_Ratio'].transform(lambda x: x.ewm(span=5, min_periods=1).mean())
+    
+    df['Form_Score'] = ((df['Form_Points_EMA'] / 3.6) * 0.60 + (df['Form_xG_EMA'] * 0.40)) * 100
+    
+    df['Season_PPG_Current'] = df.groupby('Team_Name')['Raw_Points'].transform(lambda x: x.expanding().mean())
+    
+    df['Pre_Match_PPG'] = df.groupby('Team_Name')['Season_PPG_Current'].shift(1)
+    
+    df['Pre_Match_PPG'] = df['Pre_Match_PPG'].fillna(1.35)
+    
+    df['Status_Score'] = (df['Pre_Match_PPG'] / 3.0) * 100
+    
+    max_wk = df['Wk'].max()
+    df['Season_Progress'] = df['Wk'] / max_wk
+    
+    df['Weight_Status'] = (df['Season_Progress'] * 0.5).clip(0.1, 0.5)
+    df['Weight_Form'] = 1 - df['Weight_Status']
+    
+    df['Final_Strength_Raw'] = (df['Form_Score'] * df['Weight_Form']) + \
+                               (df['Status_Score'] * df['Weight_Status'])
+    
+    df['Pre_Match_Strength'] = df.groupby('Team_Name')['Final_Strength_Raw'].shift(1)
+    
+    df['Pre_Match_Strength'] = df['Pre_Match_Strength'].fillna(50.0)
+
+    cols_to_drop = ['Raw_Points', 'Adjusted_Points', 'xG_Ratio', 'Form_Points_EMA', 'Form_xG_EMA', 
+                    'Form_Score', 'Season_PPG_Current', 'Pre_Match_PPG', 'Status_Score', 
+                    'Season_Progress', 'Weight_Status', 'Weight_Form', 'Final_Strength_Raw']
+    
+    df = df.drop(columns=cols_to_drop, errors='ignore')
+    
+    return df
+
+
+def add_opponent_strength_features(df):
+    opponent_lookup = df[['game_id', 'Team_Name', 'Pre_Match_Strength']].copy()
+    
+    opponent_lookup = opponent_lookup.rename(columns={
+        'Team_Name': 'Opponent_Name',
+        'Pre_Match_Strength': 'Opponent_Strength'
+    })
+    
+    df_enriched = df.merge(opponent_lookup, on=['game_id', 'Opponent_Name'], how='left')
+    
+    df_enriched['Strength_Diff'] = df_enriched['Pre_Match_Strength'] - df_enriched['Opponent_Strength']
+    
+    return df_enriched
+
+
 def initial_data(season, folder, league = "Serie-A"):
     df_teams, df_players = merge_data_teams(season, folder, league)
 
     df_teams = clean_team(df_teams)
     df_teams = add_league_position(df_teams)
+    df_teams = calculate_team_strength(df_teams)
+    df_teams = add_opponent_strength_features(df_teams)
+    
     df_players = clean_players(df_players)
 
     pd.set_option('display.max_columns', None)

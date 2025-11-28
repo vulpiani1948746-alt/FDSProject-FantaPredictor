@@ -52,7 +52,7 @@ def get_fixture_data(url, season, folder, league = "Serie-A"):
     fixturedata["game_id"] = fixturedata.index
     
     # export to csv file
-    fixturedata.reset_index(drop=True).to_csv(f'{folder}{league.lower()}_{season.lower()}_fixture_data.csv', 
+    fixturedata.reset_index(drop=True).to_csv(os.path.join(folder, f'{league.lower()}_{season.lower()}_fixture_data.csv'), 
         header=True, index=False, mode='w')
     print('Fixture data collected...')
 
@@ -143,10 +143,10 @@ def player_data(match_links, season, folder, league = "Serie-A"):
 
         except Exception as e:
             print(f'{link}: error {e}')
-        time.sleep(3) 
+        time.sleep(1) 
     
     # Final save
-    player_data.to_csv(os.path.join(folder, f'{league.lower()}_{season.lower()}_player_data.csv', header=True, index=False))
+    player_data.to_csv(os.path.join(folder, f'{league.lower()}_{season.lower()}_player_data.csv'), header=True, index=False)
 
 
 def main_scraper(season, folder, league = 'Serie-A'): 

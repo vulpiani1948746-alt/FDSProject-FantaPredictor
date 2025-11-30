@@ -10,7 +10,7 @@ The project consists in the creation of a deep learning model that, given the st
 * We created an xgboost model that predicts the result of a match and integrated this prediction in the dense layer of the LSTM to predict the grade of the footballer.
 
 ## The next steps:
-* Add the embedding layer (so the NN always knows who is the player) and do hyperparameter tuning
+* Do hyperparameter tuning
 * Create the 1D CNN model from the time series and evaluate it
 
 

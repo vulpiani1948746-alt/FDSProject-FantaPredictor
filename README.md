@@ -15,7 +15,7 @@ The project consists in the creation of a deep learning model that, given the st
 
 
 ## References
-https://github.com/adamcorren/fbref_football_player_data_scraper (for the data scraping of fbref)
-gupta, a. (2019). machine learning for fantasy football prediction. stanford cs229 project report. (for taking ispiration, especially for which are the most important feature to use)
-Dixon, M. J., & Coles, S. G. (1997). Modelling association football scores and inefficiencies in the football betting market. Journal of the Royal Statistical Society: Series C (Applied Statistics), 46(2), 265-280. (statistical method for predicting match results)
-Deep Learning and Transfer Learning Architectures for English Premier League Player Performance Forecasting (for the CNN architecture)
+*https://github.com/adamcorren/fbref_football_player_data_scraper (for the data scraping of fbref)
+*gupta, a. (2019). machine learning for fantasy football prediction. stanford cs229 project report. (for taking ispiration, especially for which are the most important feature to use)
+*Dixon, M. J., & Coles, S. G. (1997). Modelling association football scores and inefficiencies in the football betting market. Journal of the Royal Statistical Society: Series C (Applied Statistics), 46(2), 265-280. (statistical method for predicting match results)
+*Deep Learning and Transfer Learning Architectures for English Premier League Player Performance Forecasting (for the CNN architecture)

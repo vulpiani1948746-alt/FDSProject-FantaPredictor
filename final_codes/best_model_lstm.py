@@ -18,7 +18,7 @@ def get_ranking_loss(weight_mse=1.0, weight_cos=5.0):
 
     return ranking_loss
 
-def build_best_model(shape_past, shape_future):
+def build_best_model_lstm(shape_past, shape_future):
     # --- 1. INPUT ---
     input_past = Input(shape=shape_past, name='Input_Storico_LSTM')
     input_future = Input(shape=shape_future, name='Input_Contesto_Futuro')
@@ -77,7 +77,7 @@ def train_and_test_best_config(plot_graphs=False):
     shape_p = (X_train_past.shape[1], X_train_past.shape[2])
     shape_f = (X_train_fut.shape[1],)
     
-    model = build_best_model(shape_p, shape_f)
+    model = build_best_model_lstm(shape_p, shape_f)
 
     callbacks = [
         EarlyStopping(monitor='val_loss', patience=25, restore_best_weights=True, verbose=1),

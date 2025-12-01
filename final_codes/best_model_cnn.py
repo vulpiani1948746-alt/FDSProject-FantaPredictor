@@ -8,38 +8,35 @@ from sklearn.metrics import mean_absolute_error, r2_score
 from scipy.stats import spearmanr
 
 # Import dalle tue utility (assicurati che i nomi file siano giusti)
-from cnn import prepare_sequences, get_ranking_loss, plot_diagnostics
-from cnn import N_PAST, M_FUTURE, SCALER_TYPE 
+from lstm_with_predictions import prepare_sequences, get_ranking_loss, plot_diagnostics
+from lstm_with_predictions import N_PAST, M_FUTURE, SCALER_TYPE 
 
+# --- 1. COSTRUZIONE MODELLO OTTIMIZZATO ---
 def build_best_cnn(shape_past, shape_future):
     """
-    CNN Hard-Coded con i parametri vincenti del Tuner (Round 2).
+    CNN Hard-Coded con i parametri vincenti del Tuner.
     """
-    # --- PARAMETRI VINCENTI ---
-    FILTERS_L1 = 32         # Filtri primo layer
-    FILTERS_L2 = 64         # Filtri secondo layer (solitamente il doppio del primo)
-    KERNEL_SIZE = 2         # Finestra temporale molto stretta (coppie di partite)
+    # Parametri dal Tuning
+    FILTERS = 96
+    KERNEL_SIZE = 3
     DENSE_CONTEXT = 48
-    DENSE_FINAL = 32
+    DENSE_FINAL = 64
     DROPOUT_RATE = 0.3
-    LEARNING_RATE = 0.001
-    COSINE_WEIGHT = 5.0     # Peso Ranking bilanciato
+    LEARNING_RATE = 0.0005
+    COSINE_WEIGHT = 10.0
     
     # --- Input ---
     input_past = Input(shape=shape_past, name='Input_Storico_CNN')
     input_future = Input(shape=shape_future, name='Input_Contesto')
     
     # --- RAMO CNN (Analizza il passato) ---
-    
-    # 1° Strato Convoluzionale (Vincitore: 32 filtri, Kernel 2)
-    x = Conv1D(filters=FILTERS_L1, kernel_size=KERNEL_SIZE, activation='relu', padding='same')(input_past)
+    # Layer 1 (Vincitore: 96 filtri, Kernel 3)
+    x = Conv1D(filters=FILTERS, kernel_size=KERNEL_SIZE, activation='relu', padding='same')(input_past)
     x = BatchNormalization()(x)
     
-    # 2° Strato Convoluzionale (Vincitore: True -> Aggiungiamo complessità)
-    x = Conv1D(filters=FILTERS_L2, kernel_size=KERNEL_SIZE, activation='relu', padding='same')(x)
-    x = BatchNormalization()(x)
+    # Second Layer? (Vincitore: False -> Saltiamo il secondo blocco Conv1D)
     
-    # Pooling: Riassume tutto
+    # Pooling
     x = GlobalAveragePooling1D()(x) 
     x = Dropout(DROPOUT_RATE)(x)
     
@@ -53,7 +50,7 @@ def build_best_cnn(shape_past, shape_future):
     combined = Concatenate()([x, y])
     
     # --- LAYER FINALE ---
-    # Vincitore: 32 neuroni
+    # Vincitore: 64 neuroni
     z = Dense(DENSE_FINAL, activation='relu')(combined)
     z = Dropout(DROPOUT_RATE)(z)
     
@@ -61,11 +58,11 @@ def build_best_cnn(shape_past, shape_future):
     
     model = Model(inputs=[input_past, input_future], outputs=output)
     
-    # Loss Ibrida (Vincitore: Peso Coseno 5.0)
+    # Loss Ibrida (Vincitore: Peso Coseno 10.0)
     loss_ranking = get_ranking_loss(weight_mse=1.0, weight_cos=COSINE_WEIGHT)
     
     model.compile(optimizer=Adam(learning_rate=LEARNING_RATE), 
-                  loss='mae', 
+                  loss=loss_ranking, 
                   metrics=['mae', 'mse'])
     
     return model

@@ -9,7 +9,7 @@ from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from sklearn.metrics import mean_absolute_error, r2_score
 from scipy.stats import spearmanr
-from lstm_with_predictions import plot_diagnostics, prepare_sequences, SCALER_TYPE, N_PAST
+from lstm_with_predictions import plot_diagnostics, prepare_sequences, SCALER_TYPE, N_PAST, M_FUTURE
 
 # --- NUOVA FUNZIONE MATRICE DI AFFIDABILITÀ ---
 def reliability_matrix(model, X_past, X_fut, y_true, denorm_factor, lower_bound=4.0):
@@ -101,7 +101,7 @@ def build_best_model_lstm(shape_past, shape_future):
     final_loss = get_ranking_loss(weight_mse=1.0, weight_cos=10.0)
     
     model.compile(optimizer=Adam(learning_rate=0.001), 
-                  loss=final_loss, 
+                  loss='mae', 
                   metrics=['mae', 'mse'])
     
     return model
@@ -165,10 +165,111 @@ def train_and_test_best_config(plot_graphs=False, analyze_errors=False):
     
     return model, mae_real
 
-# --- ESECUZIONE ---
+def find_best_n_past_lstm(min_n=2, max_n=12):
+    """
+    Cerca il miglior valore di N_PAST per il modello LSTM ottimizzato.
+    """
+    results_mae = {}
+    results_spearman = {}
+    
+    print(f"\n🚀 AVVIO RICERCA N_PAST PER LSTM (da {min_n} a {max_n})...")
+    
+    for n in range(min_n, max_n + 1):
+        print(f"\n>>> Testing N_PAST = {n}...")
+        
+        try:
+            # 1. Rigenera i dati con il nuovo N
+            data_bundle = prepare_sequences(SCALER_TYPE, n_past=n, m_future=M_FUTURE)
+            
+            train = data_bundle[0]
+            val = data_bundle[1]
+            test = data_bundle[2]
+            denorm_factor = data_bundle[3]
+            
+            X_train_p, X_train_f = train[0], train[1]
+            y_train = train[-1]
+            
+            X_val_p, X_val_f = val[0], val[1]
+            y_val = val[-1]
+            
+            X_test_p, X_test_f = test[0], test[1]
+            y_test = test[-1]
+            
+            # 2. Costruisci il modello LSTM Hard-Coded
+            # Nota: Usa la tua funzione build_best_model_lstm esistente
+            shape_p = (X_train_p.shape[1], X_train_p.shape[2])
+            shape_f = (X_train_f.shape[1],)
+            
+            model = build_best_model_lstm(shape_p, shape_f)
+            
+            # 3. Training Veloce (Fast Track)
+            callbacks_fast = [
+                EarlyStopping(monitor='val_loss', patience=15, restore_best_weights=True, verbose=0),
+                ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=5, min_lr=1e-6, verbose=0)
+            ]
+            
+            model.fit(
+                x=[X_train_p, X_train_f], y=y_train,
+                validation_data=([X_val_p, X_val_f], y_val),
+                epochs=80,       # Meno epoche del training finale (abbastanza per vedere il trend)
+                batch_size=128,  # Batch grande per velocità e stabilità cosine loss
+                callbacks=callbacks_fast,
+                verbose=0        # Silenzioso
+            )
+            
+            # 4. Valutazione
+            preds = model.predict([X_test_p, X_test_f], verbose=0).flatten()
+            
+            mae_scaled = mean_absolute_error(y_test, preds)
+            mae_real = mae_scaled * denorm_factor
+            spearman, _ = spearmanr(y_test, preds)
+            
+            print(f"--> N={n}: MAE={mae_real:.4f} | Spearman={spearman:.4f}")
+            
+            results_mae[n] = mae_real
+            results_spearman[n] = spearman
+            
+            # Pulizia RAM
+            tf.keras.backend.clear_session()
+            del model, X_train_p
+            
+        except Exception as e:
+            print(f"Errore con N={n}: {e}")
+
+    # --- RISULTATO FINALE (Basato su Spearman) ---
+    best_n = max(results_spearman, key=results_spearman.get)
+    print("\n=========================================")
+    print(f"🏆 VINCITORE LSTM (Spearman): N_PAST = {best_n}")
+    print(f"   Spearman: {results_spearman[best_n]:.4f}")
+    print(f"   MAE:      {results_mae[best_n]:.4f}")
+    print("=========================================")
+    
+    # --- PLOT COMPARATIVO ---
+    fig, ax1 = plt.subplots(figsize=(10, 6))
+
+    color = 'tab:red'
+    ax1.set_xlabel('N_PAST (Giornate)')
+    ax1.set_ylabel('MAE (Basso è meglio)', color=color)
+    ax1.plot(list(results_mae.keys()), list(results_mae.values()), marker='o', color=color, label='MAE')
+    ax1.tick_params(axis='y', labelcolor=color)
+    ax1.grid(True, alpha=0.3)
+
+    ax2 = ax1.twinx()  # Secondo asse Y per Spearman
+    color = 'tab:purple'
+    ax2.set_ylabel('Spearman (Alto è meglio)', color=color)
+    ax2.plot(list(results_spearman.keys()), list(results_spearman.values()), marker='s', linestyle='--', color=color, label='Spearman')
+    ax2.tick_params(axis='y', labelcolor=color)
+
+    plt.title('Performance LSTM al variare di N_PAST')
+    fig.tight_layout()  
+    plt.show()
+    
+    return best_n, results_spearman
+
+# --- USO ---
 if __name__ == "__main__":
-    # Puoi accendere e spegnere i flag a piacimento
-    model, final_mae = train_and_test_best_config(
-        plot_graphs=False,      # Mostra le curve di loss
-        analyze_errors=True    # Mostra la top 15 errori e i bias
-    )
+    best_n, _ = find_best_n_past_lstm(min_n=2, max_n=12)
+    
+    # E poi usa il vincitore nel training finale:
+    # N_PAST = best_n 
+    # model, final_mae = train_and_test_best_config(plot_graphs=True, analyze_errors=True)

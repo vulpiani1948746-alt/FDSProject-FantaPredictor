@@ -15,7 +15,6 @@ from tensorflow.keras.layers import Input, LSTM, Dense, Concatenate, Dropout, Ba
 from tensorflow.keras.optimizers import Adam
 from scaler import create_scaler, RobustMinMaxScaler
 from feature_engineering import merge_players_with_teams
-from baseline import baseline_linear_regression
 from scipy.stats import spearmanr
 pd.set_option('display.max_rows', None)
 

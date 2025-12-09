@@ -5,6 +5,7 @@ from fuzzywuzzy import process, fuzz
 import unicodedata
 import os
 
+# Dictionary of manual inserted replacements
 replacements = {
         "Daniel Bandeira": "Dani Silva",
         "Enrico Del Prato": "Delprato",
@@ -36,7 +37,7 @@ replacements = {
 
 def transliterate_name(input_str):
     """
-    Pulisce i nomi gestendo caratteri speciali non standard (ð, æ, ø, Đ).
+    Cleans players' names by substituting strange letters
     """
     if pd.isna(input_str): return ""
     
@@ -65,8 +66,7 @@ def transliterate_name(input_str):
 
 def pulisci_nome_fanta(nome_fanta):
     """
-    Trasforma 'DE ROON M.' in 'DE ROON'.
-    Rimuove l'iniziale puntata alla fine se presente.
+    Removes the initial letter of the name if it's followed by a point
     """
     if pd.isna(nome_fanta): return ""
     parts = str(nome_fanta).strip().split()
@@ -78,13 +78,20 @@ def pulisci_nome_fanta(nome_fanta):
 
 
 def prepare_dataframes(df_fanta, df_stats):
-
+    """
+    Prepares the two dataframes (Fantasy Football data and Statistical data) for merging.
+    It creates normalization keys based on team names and match weeks to reduce the search space later.
+    """
+    
+    # Normalize team names to lower case and strip whitespace for consistent matching
     df_stats['team_norm'] = df_stats['Team_Name'].str.lower().str.strip()
     df_fanta['team_norm'] = df_fanta['Squadra'].str.lower().str.strip()
 
+    # Create a unique 'match_key' combining Team and Week
     df_stats['match_key'] = df_stats['team_norm'] + "_" + df_stats['Wk'].astype(str)
     df_fanta['match_key'] = df_fanta['team_norm'] + "_" + df_fanta['id_giornata'].astype(str)
 
+    # Clean and transliterate player names to improve fuzzy matching accuracy
     df_fanta['fanta_key'] = df_fanta['Nome'].apply(pulisci_nome_fanta).apply(transliterate_name)
     df_stats['stats_key'] = df_stats['Player'].apply(transliterate_name)
 
@@ -92,12 +99,18 @@ def prepare_dataframes(df_fanta, df_stats):
 
 
 def find_problems(df_matches, df_stats):
+    """
+    Analyzes the result of the matching process to identify missing players.
+    If too many players are missing, it stops the execution to allow manual fixing.
+    """
+    # Find indices in the stats dataframe that were NOT matched
     indici_mancanti = df_stats.index.difference(df_matches['index_stats'])
     df_missing = df_stats.loc[indici_mancanti].copy()
 
     print(f"Total non-matched rows: {len(df_missing)}")
     print("-" * 50)
 
+    # Get unique player names that failed matching
     nomi_unici_sbagliati = sorted(df_missing['Player'].unique())
 
     print(f"Players to fix ({len(nomi_unici_sbagliati)}):")
@@ -107,6 +120,7 @@ def find_problems(df_matches, df_stats):
 
     print("-" * 50)
 
+    # Threshold for critical failure: if > 20 players are missing, stop to update the replacement dictionary
     if len(df_missing) > 20:
         print("❌❌ WE NEED TO FIX THE REPLACEMENTS AND RE-RUN ❌❌")
         exit()
@@ -118,21 +132,22 @@ def find_problems(df_matches, df_stats):
 
 def find_matches2(df_fanta, df_stats, replacements):
     """
-    Cerca corrispondenze tra Stats e Fanta.
-    PRIORITÀ 1: Dizionario manuale (per i casi impossibili da risolvere con fuzzy).
-    PRIORITÀ 2: Fuzzy Logic (token_set_ratio).
+    Core matching logic. Tries to map players from 'df_stats' to 'df_fanta'.
     """
 
     matches = []
     
+    # Optimization: Grouping by match_key drastically reduces complexity (O(N^2) -> O(N))
     groups = df_stats.groupby('match_key')
 
     for key, group_stats in groups:
+        # Filter the fantasy dataframe to only include players from the current team/week
         subset_fanta = df_fanta[df_fanta['match_key'] == key]
         
         if subset_fanta.empty:
             continue
         
+        # Create a map for quick lookups: Transliterated Name -> Original Name
         fanta_candidates_map = dict(zip(subset_fanta['fanta_key'], subset_fanta['Nome']))
         choices = list(fanta_candidates_map.keys())
         
@@ -145,26 +160,32 @@ def find_matches2(df_fanta, df_stats, replacements):
             found_name = None
             score = 0
             
+            # Manual Replacement Check (Highest Priority)
             if player_stats_name in replacements:
                 target_name = replacements[player_stats_name]
                 
+                # Verify the manually mapped name actually exists in the current fantasy subset
                 if target_name in fanta_names_original_set:
                     found_name = target_name
                     score = 100
             
+            # Fuzzy Matching Check (If manual failed)
             if found_name is None:
+                # extractOne finds the string in 'choices' most similar to 'player_clean_name'
                 best_match_key, calc_score = process.extractOne(
                     player_clean_name, choices, scorer=fuzz.token_set_ratio
                 )
                 
+                # Threshold: Only accept match if similarity is > 75%
                 if calc_score > 75: 
                     found_name = fanta_candidates_map[best_match_key]
                     score = calc_score
             
+            # Store the successful match
             if found_name:
                 matches.append({
-                    'index_stats': idx,
-                    'fanta_name': found_name,
+                    'index_stats': idx, 
+                    'fanta_name': found_name, 
                     'match_score': score
                 })
 
@@ -174,16 +195,18 @@ def find_matches2(df_fanta, df_stats, replacements):
 
 def merge_dataframes(df_stats, df_fanta, df_matches):
     """
-    Unisce i DataFrame Stats e Fanta usando la tabella di decodifica df_matches.
-    Mantiene SOLO le righe dove c'è stato un match (INNER JOIN).
+    Performs the final merge of Stats and Fantasy data using the mapping dataframe 'df_matches'.
+    It uses an INNER JOIN, meaning only fully matched rows are kept.
     """
+    # Merge Stats with the bridge (df_matches) using the index
     df_merged = df_stats.merge(
         df_matches, 
         left_index=True, 
         right_on='index_stats', 
         how='inner' 
     )
-    
+
+    # Merge the result with Fantasy data using the matched name and match key
     final_df = df_merged.merge(
         df_fanta,
         left_on=['match_key', 'fanta_name'], 
@@ -192,6 +215,7 @@ def merge_dataframes(df_stats, df_fanta, df_matches):
         suffixes=('_stats', '_fanta')
     )
     
+    # Drop temporary columns used only for the merging logic
     cols_to_drop = [
         'stats_key', 'fanta_key', 'match_key', 'index_stats', 
         'team_norm_stats', 'team_norm_fanta', 'giornata_join',
@@ -205,10 +229,12 @@ def merge_dataframes(df_stats, df_fanta, df_matches):
 
 
 def clean_merged(df):
+    """
+    Cleans the final dataframe: drops redundant columns, renames columns to English/Standard format,
+    and reorders them for readability.
+    """
     cols_to_drop = [
-        "Player",
-        "Wk",
-        "Team_Name"
+        "Player", "Wk", "Team_Name"
     ]
     df = df.drop(columns=cols_to_drop, errors='ignore')
 
@@ -238,6 +264,7 @@ def clean_merged(df):
     }
     df = df.rename(columns=rename_map)
 
+    # Enforce a specific column order
     final_order = [
         'Player_id', 'Name', 'Team', 'Pos', 'Age', 'Value', 'Opponent', 'Week_id', 
         'Min', 'Player_Goals', 'Ast', 'Autogoal', 'Missed_Pen', 'PK', 'PKatt', 'Shots', 'SoT', 
@@ -252,22 +279,28 @@ def clean_merged(df):
     return df
 
 
-def return_final_dataframe(season, folder, league = "Serie-A"):
-
+def return_final_dataframe(season, folder, league="Serie-A"):
+    """
+    Orchestrator function. Loads raw data, runs the matching pipeline, cleans results,
+    and returns the final polished dataframe ready for ML.
+    """
+    # Load Initial Data
     df_teams, df_stats = initial_data(season, folder, league)
     df_fanta = pd.read_pickle(os.path.join(folder, "Fantacalcio.pkl"))
 
+    # Prepare Keys
     df_fanta, df_stats = prepare_dataframes(df_fanta, df_stats)
 
+    # Find Matches
     print("Find Matches between the two dataframes...")
     df_matches = find_matches2(df_fanta, df_stats, replacements)
 
+    # Check for Errors
     find_problems(df_matches, df_stats)
 
-
+    # Merge and Clean
     df_final = merge_dataframes(df_stats, df_fanta, df_matches)
     print(f"✅ Merge completed! Final Rows: {len(df_final)}")
     df_final = clean_merged(df_final)
     
     return df_final
-

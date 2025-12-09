@@ -1,47 +1,47 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import seaborn as sns # Assicurati di avere seaborn installato (pip install seaborn)
+import seaborn as sns
 import tensorflow as tf
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Input, LSTM, Dense, Concatenate, Dropout, BatchNormalization
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
-from sklearn.metrics import mean_absolute_error, r2_score
+from sklearn.metrics import mean_absolute_error
 from scipy.stats import spearmanr
 from lstm_with_predictions import plot_diagnostics, prepare_sequences, SCALER_TYPE, N_PAST
 
-# --- NUOVA FUNZIONE DI ANALISI ERRORI ---
-def analyze_model_errors(y_true_scaled, y_pred_scaled, denorm_factor, lower_bound_est=3.5):
+
+def analyze_model_errors(y_true_scaled, y_pred_scaled, denorm_factor, lower_bound_est=4.0):
     """
-    Analisi dettagliata degli errori del modello.
-    lower_bound_est: stima del voto minimo (es. 3.5) per rendere i grafici leggibili in scala reale.
+    Detailed analysis of the errors of the model.
+    1) Top 15 errors
+    2) Errors by grades
+    3) Biases (tends to overestimate or to underestimate?)
     """
     print("\n===========================================")
-    print("🔎 ANALISI APPROFONDITA ERRORI")
-    print("===========================================")
+    print("ERROR ANALYSIS\n")
     
-    # 1. Denormalizzazione
+    # 1. Denormalization
     y_real = y_true_scaled * denorm_factor + lower_bound_est
     p_real = y_pred_scaled * denorm_factor + lower_bound_est
     
-    # 2. Calcolo Differenze
+    # 2. Compute differences
     errors = y_real - p_real
     abs_errors = np.abs(errors)
     
     df_err = pd.DataFrame({
         'Reale': y_real,
         'Predetto': p_real,
-        'Errore': errors,          # Se < 0: Sovrastima (Pred > Reale)
-        'Errore_Abs': abs_errors   # Grandezza errore
+        'Errore': errors,          
+        'Errore_Abs': abs_errors  
     })
     
-    # --- A. TOP 15 ERRORI PEGGIORI ---
+    # Top 15 worst errors
     print("\n--- TOP 15 ERRORI PIÙ GRAVI ---")
     print(df_err.sort_values('Errore_Abs', ascending=False).head(15).to_string(index=False))
     
-    # --- B. ERRORE PER FASCIA DI VOTO (Binning) ---
-    # Creiamo fasce di voto per vedere dove il modello soffre
+    # Errors by grades (to understand where the model suffers the most)
     bins = [0, 5.5, 6.0, 6.5, 7.0, 8.0, 20.0]
     labels = ['< 5.5 (Malus)', '5.5-6.0 (Suff)', '6.0-6.5 (Buono)', '6.5-7.0 (Ottimo)', '7.0-8.0 (Super)', '> 8.0 (Exploit)']
     
@@ -60,7 +60,7 @@ def analyze_model_errors(y_true_scaled, y_pred_scaled, denorm_factor, lower_boun
     print("\nMAE per Fascia:")
     print(mae_by_bin)
 
-    # --- C. ANALISI RESIDUI (Bias) ---
+    # Biases analysis
     plt.figure(figsize=(10, 6))
     sns.scatterplot(x=df_err['Reale'], y=df_err['Errore'], alpha=0.4)
     plt.axhline(0, color='red', linestyle='--', linewidth=2)
@@ -72,8 +72,11 @@ def analyze_model_errors(y_true_scaled, y_pred_scaled, denorm_factor, lower_boun
     
     plt.show()
 
-# --- LOSS CUSTOM ---
+
 def get_ranking_loss(weight_mse=1.0, weight_cos=5.0):
+    """
+    Computes the custom loss by doing a weighted multiplication of MSE and cosine similarity
+    """
     mse_fn = tf.keras.losses.MeanSquaredError()
     cosine_fn = tf.keras.losses.CosineSimilarity()
 
@@ -84,30 +87,33 @@ def get_ranking_loss(weight_mse=1.0, weight_cos=5.0):
 
     return ranking_loss
 
-# --- COSTRUZIONE MODELLO ---
+
 def build_best_model_lstm(shape_past, shape_future):
-    # --- 1. INPUT ---
+    """
+    Builds the Best model for the LSTM by manually inserting the hyperparameters
+    obtained during the tuning.
+    """
+    # Input
     input_past = Input(shape=shape_past, name='Input_Storico_LSTM')
     input_future = Input(shape=shape_future, name='Input_Contesto_Futuro')
     
-    # --- 2. RAMO LSTM ---
+    # LSTM Part 
     x = LSTM(96, return_sequences=False, activation='tanh')(input_past)
     x = BatchNormalization()(x)
     x = Dropout(0.3)(x) 
     
-    # --- 3. RAMO CONTESTO ---
+    # Dense part
     y = Dense(16, activation='relu')(input_future)
     y = BatchNormalization()(y)
     y = Dropout(0.3)(y) 
     
-    # --- 4. UNIONE ---
     combined = Concatenate()([x, y])
     
-    # --- 5. LAYER FINALE ---
+    # Final Layer
     z = Dense(96, activation='relu')(combined)
     z = Dropout(0.3)(z) 
     
-    # --- 6. LAYER EXTRA ---
+    # Extra Layer
     z = Dense(96, activation='relu')(z) 
     z = Dropout(0.3)(z) 
     
@@ -115,7 +121,6 @@ def build_best_model_lstm(shape_past, shape_future):
     
     model = Model(inputs=[input_past, input_future], outputs=output)
     
-    # --- 7. COMPILAZIONE ---
     final_loss = get_ranking_loss(weight_mse=1.0, weight_cos=10.0)
     
     model.compile(optimizer=Adam(learning_rate=0.001), 
@@ -124,9 +129,12 @@ def build_best_model_lstm(shape_past, shape_future):
     
     return model
 
-# --- TRAINING & TEST ---
+
 def train_and_test_best_config(plot_graphs=False):
-    print("--- AVVIO TRAINING MODELLO OTTIMIZZATO (Con Error Analysis) ---")
+    """
+    Trains and tests the best possible model for the LSTM and calls analyze errors
+    """
+    print("START TRAINING OF THE BEST MODEL (With Error analysis)")
     
     lista = prepare_sequences(SCALER_TYPE, N_PAST) 
     denorm_factor = lista[3]
@@ -160,26 +168,21 @@ def train_and_test_best_config(plot_graphs=False):
         verbose=1 
     )
 
-    print("TRAINING COMPLETATO.")
+    print("TRAINING DONE.")
 
     if plot_graphs:
         plot_diagnostics(history, model, X_test_past, X_test_fut, y_test, denorm_factor)
 
-    print("\n--- VALUTAZIONE FINALE ---")
+    print("\nFINAL EVALUATION")
     preds = model.predict([X_test_past, X_test_fut], verbose=0).flatten()
     
     mae_real = mean_absolute_error(y_test, preds) * denorm_factor
     spearman_score, _ = spearmanr(y_test, preds)
-    r2 = r2_score(y_test, preds)
     
-    print(f"MAE Reale: {mae_real:.4f}")
-    print(f"Spearman:  {spearman_score:.4f}")
-    print(f"R² Score:  {r2:.4f}")
-    
-    # --- CHIAMATA ANALISI ERRORI ---
-    # Nota: lower_bound_est=3.5 è una stima tipica del voto minimo nel fantacalcio 
-    # per rendere i grafici realistici (range 3.5 - 10.5 circa).
-    analyze_model_errors(y_test, preds, denorm_factor, lower_bound_est=3.5)
+    print(f"MAE: {mae_real:.4f}")
+    print(f"Spearman:  {spearman_score:.4f}")    
+
+    analyze_model_errors(y_test, preds, denorm_factor, lower_bound_est=4.0)
     
     return model, mae_real
 

@@ -19,6 +19,9 @@ SEASON = '2024-2025'  # Choose the season
 final_folder = os.path.join(FOLDER, f"season{SEASON}")
 os.makedirs(final_folder, exist_ok=True)
 
+"""
+This main function was used to test the creation of dataframes for a single season
+"""
 
 if __name__ == "__main__":
     ### COMMENT OUT THIS PART FOR THE RE-RUNS -----------

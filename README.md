@@ -1,38 +1,92 @@
-### FDS Project
-The project consists in the creation of a deep learning model that, given the statistics about the last N matches, predicts the  grade of a player in Fantasy Football for the next match.
+# Predicting Player Performance in Fantasy Football (Serie A) using Deep Learning
 
-## What did we do?
-* We scraped the data from fbref, applying the code present at https://github.com/adamcorren/fbref_football_player_data_scraper. We encountered a problem because the website was blocking us after recognizing we were using a bot. To solve the problem we changed the code to impersonate a real user that accesses the website (used gemini pro to do it). In this way, we were able to extract all the statistics about every player and every team for every match of the last 8 seasons.
-* We scraped the Fantasy Football data from Fantacalcio.it by downloading the excel files the website provides for each game of the season. The problem here was that the website requires access to it to download the data so we had to copy the cookie and insert its information to automatically scrape the website. In this way we obtained data about the grades of each player for each match.
-* We merged the data into a unique pandas dataframe by addressing the problems of some footbalers' names that are spelled differently in the two datasets (we manually corrected some of them), we did some feature engineering (we added some features extracted from the ones available) and we deleted the highly correlated features.
-* We created the baseline model and evaluated it. It is a linear regression model.
-* Once the features were complete we trained an LSTM that "looks" at the last 6 matches and predicts the fantasy football grade of the player for the next match. It is made of the normal LSTM and it adds a dense layer that takes in input the "future" features that are the ones known about the match (the strength of the opposing team, is it at home or not). Later we did feature selection (with permutation importance) and hyperparameter tuning (for the value of N and the normal hyperparameters of the NN) and obtained results that are better than the baseline model but not too much.
-* We created an xgboost model that predicts the result of a match and integrated this prediction in the dense layer of the LSTM to predict the grade of the footballer, then did hyperparameter tuning on this new model. We got way better results!
-* We created a 1-d CNN on the same features, then did feature selection and hyperparameter tuning for this model too. The results are similar to the ones obtained by the LSTM.
+**Course:** Foundations of Data Science  
+**Authors:** Francesco Finazzi, Chiara Vulpiani
 
-* For all the models we used two different loss funcions: MAE (mean absolute error) and a custom loss that combines MSE (mean squared error) and cosine similarity. We noticed that the first one achieves a better MAE but struggles in getting a good Spearman coefficient (to understand which are the best players), while the second one is created to have a balance between the precision of thge predicted grade and the ranking of the players and achieves a better Spearman coefficient. So we decided to use the second one because
+## Project Overview
 
-## Results 
-*	Baseline (Linear Regression): MAE = 0.8264 / spearman = 0.1813
-*	
-*	LSTM base con custom loss: MAE = 0.8182 / spearman = 0.1873
-*	LSTM base con MAE loss: MAE = 0.7375 / spearman = 0.1059
-*
-*	LSTM con previsione risultati pre-tuning con loss MAE: MAE = 0.7223 / spearman = 0.2389
-*	LSTM con previsione risultati pre-tuning con custom loss: MAE = 0.7887 / spearman = 0.2798
-*	LSTM con previsione risultati con custom loss e tuning su mae: MAE = 0.7766 / spearman = 0.2718
-*	LSTM con previsione risultati con loss mae e tuning su mae: MAE = / spearman = 
-*	LSTM con previsione risultati con custom loss e tuning su custom loss: MAE = / spearman = 
-*	
-*	CNN con custom loss pre-tuning: MAE = 0.7976 / spearman = 0.2558
-*	CNN con loss MAE pre-tuning: MAE = 0.7224 / spearman = 0.2472
-*	CNN con tuning su MAE e loss MAE: MAE = / spearman = 
-*	CNN con tuning su MAE e custom loss: MAE = / sperman = 
-*	CNN con tuning su custom loss e custom loss: MAE = / spearman = 
+This project models "Fantacalcio" (Italian Fantasy Football) score prediction as a time-series regression problem. In Fantacalcio, participants manage virtual teams of real Serie-A players, where scores ("Fantavoto") combine subjective journalist grades with objective event-based bonuses and maluses.
 
+Accurate prediction is critical for solving the weekly "sit/bench" dilemma. Unlike previous works focusing on the statistics-driven English Premier League, this project addresses the subjective nature of Serie A ratings using Deep Learning, building on insights regarding extensive feature engineering and recent form patterns.
 
-## References
-* https://github.com/adamcorren/fbref_football_player_data_scraper (for the data scraping of fbref)
-* gupta, a. (2019). machine learning for fantasy football prediction. stanford cs229 project report. (for taking ispiration, especially for which are the most important feature to use)
-* Dixon, M. J., & Coles, S. G. (1997). Modelling association football scores and inefficiencies in the football betting market. Journal of the Royal Statistical Society: Series C (Applied Statistics), 46(2), 265-280. (statistical method for predicting match results)
-* Deep Learning and Transfer Learning Architectures for English Premier League Player Performance Forecasting (for the CNN architecture)
+## Dataset Construction
+
+We constructed a comprehensive dataset spanning the **2017-18 to 2024-25 Serie A seasons**.
+
+* **Data Sources:**
+    * **Match Statistics:** Scraped from FBref.com using a modified scraper to bypass bot detection.
+    * **Subjective Grades:** Scraped from Fantacalcio.it via custom scripts.
+* **Preprocessing:**
+    * Player identities aligned via fuzzy string matching.
+    * **Exclusions:** The 2020-21 season (COVID anomalies) and Goalkeepers (different statistical profiles) were removed.
+    * **Final Size:** 68,708 player-match observations covering 1,552 unique players.
+* **Data Splitting:** Chronological split to prevent data leakage.
+    * **Training:** Seasons 2017-2023 (N ≈ 8,744).
+    * **Validation:** Season 2023-24 (N ≈ 8,476).
+    * **Test:** Season 2024-25 (N ≈ 8,391).
+
+## Methodology & Architecture
+
+### 1. Feature Engineering
+From an initial 78 raw features, we reduced dimensionality through filtering, collinearity reduction (removing r > 0.75), and Permutation Feature Importance. The final input vector consists of:
+* **30 Player Features:** Historical stats.
+* **6 Team Features:** Historical team stats.
+* **4 Future Context Features:** Data regarding the upcoming match.
+
+> **Note:** A Robust MinMax scaler was used to handle outliers.
+
+### 2. Auxiliary XGBoost Model
+Feature importance analysis revealed that future context dominates prediction. To provide this signal explicitly, we trained an **XGBoost Regressor** to predict the specific outcome of the upcoming match (Team Goals Scored/Conceded).
+
+### 3. Dual-Input Neural Network
+We designed a modular dual-stream architecture:
+1.  **Context Stream (Future):** Processes static future context (including XGBoost predictions) via Dense Layers.
+2.  **Temporal Stream (History):** Processes historical tensor using either:
+    * **LSTM Variant:** Captures sequential trends.
+    * **CNN Variant:** Captures local patterns via stacked 1D Convolutional layers.
+
+These streams are concatenated and passed through an MLP head to predict the "Fantavoto".
+
+### 4. Hybrid Loss Function
+To balance error minimization (MSE) and ranking accuracy (Cosine Similarity), we utilized a hybrid loss function:
+
+$$Loss = \alpha MSE + (1 - CosineSimilarity)$$
+
+This addresses the tendency of MAE to be too conservative and MSE to penalize outliers excessively.
+
+## Experimental Results
+
+Models were evaluated using Mean Absolute Error (MAE) and Spearman Correlation Coefficient (ρ).
+
+### Performance Comparison (All Players)
+The inclusion of XGBoost context led to a **57% improvement in ρ** over the baseline.
+
+| Loss Used | Model | MAE | Spearman (ρ) |
+| :--- | :--- | :--- | :--- |
+| **Baseline** | Linear Regression | 0.8264 | 0.1813 |
+| **MAE Loss** | LSTM Base | 0.7375 | 0.1059 |
+| | LSTM + XGBoost | 0.7187 | 0.2587 |
+| | CNN + XGBoost | **0.7162** | 0.2551 |
+| **Hybrid Loss**| LSTM + XGBoost | 0.7797 | 0.2801 |
+| | CNN + XGBoost | 0.7840 | 0.2774 |
+| **Ensemble** | LSTM (MAE) + CNN (HL) | 0.7179 | 0.2581 |
+| **Ensemble** | LSTM (HL) + CNN (MAE) | 0.7477 | **0.2852** |
+
+### Results by Role
+Defenders are the most predictable due to performance stability, while attackers are highly volatile due to reliance on rare events (goals).
+
+| Role | Best Result MAE | Best Result Spearman (ρ) |
+| :--- | :--- | :--- |
+| Defenders | 0.5814 | 0.3105 |
+| Midfielders | 0.6890 | 0.2774 |
+| Attackers | 1.030 | 0.2584 |
+| **Total** | **0.7162** | **0.2851** |
+
+### Key Findings
+* **Context is Key:** Team performance context is essential for individual grade prediction.
+* **Error-Ranking Tradeoff:** Models trained on MAE produced stable/conservative predictions, while Custom Loss models had higher absolute error (~9% increase) but superior ranking accuracy (~8% increase in ρ).
+* **Ensembling:** Combining MAE-trained and Hybrid-trained models offers the best balance for practical application.
+
+## Future Work
+1.  **Sentiment Analysis:** Analyze sports journalism to capture qualitative factors.
+2.  **Specialized Models:** Develop dedicated models for goalkeepers and "high-variance" probability models for attackers.

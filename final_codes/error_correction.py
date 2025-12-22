@@ -3,7 +3,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 import math
-from sklearn.preprocessing import MinMaxScaler, StandardScaler
 from sklearn.metrics import mean_absolute_error
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Input, LSTM, Dense, Concatenate, Dropout
@@ -13,10 +12,8 @@ import tensorflow as tf
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Input, LSTM, Dense, Concatenate, Dropout, BatchNormalization
 from tensorflow.keras.optimizers import Adam
-from scaler import create_scaler, RobustMinMaxScaler
-from feature_engineering import merge_players_with_teams
 from scipy.stats import spearmanr
-from lstm_with_predictions import plot_diagnostics, prepare_data_dual_input, prepare_all_data, N_PAST, SCALER_TYPE
+from lstm_with_predictions import plot_diagnostics, prepare_all_data, N_PAST, SCALER_TYPE
 pd.set_option('display.max_rows', None)
 
 

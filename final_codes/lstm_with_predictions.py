@@ -25,7 +25,7 @@ SEASONS = ["2017-2018", "2018-2019", "2019-2020", "2021-2022", "2022-2023", "202
 N_PAST = 4
 M_FUTURE = 1
 SCALER_TYPE = "minmax"
-ROLE = "Role_A"
+ROLE = "player"
 
 player_cols = [
     'Voto_Fantacalcio', 'Player_Goals', 'Ast', 'Shots', 'SoT', 

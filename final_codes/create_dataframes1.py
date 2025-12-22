@@ -9,7 +9,6 @@ import pandas as pd
 import os
 import time
 
-###### CHANGE THESE VALUES!!!
 FOLDER = "C:/Users/franc/OneDrive/Desktop/Github/FDSProject-FantaPredictor/final_data"
 SEASONS = ["2017-2018", "2018-2019", "2019-2020", "2021-2022", "2022-2023", "2023-2024", "2024-2025"] 
 
@@ -19,7 +18,6 @@ def split_and_save_roles(df, season_folder):
     """
     
     roles_map = {
-        #'P': 'FinalDF_Role_P.pkl', 
         'D': 'FinalDF_Role_D.pkl',  
         'C': 'FinalDF_Role_C.pkl',  
         'A': 'FinalDF_Role_A.pkl'   
@@ -74,7 +72,7 @@ def create_dfs():
 
         df_teams.to_pickle(os.path.join(final_folder, "teams.pkl"))
         df_stats.to_pickle(os.path.join(final_folder, "stats.pkl"))
-
+        
         print(f"Calculating Team Goal predictions for {season}...")
         try:
             current_idx = SEASONS.index(season)
@@ -113,10 +111,9 @@ def create_dfs():
         for col in ['Pred_Team_Goals', 'Pred_Team_Conceded', 'Pred_Goal_Diff']:
             if col not in df_teams.columns:
                 df_teams[col] = 0.0
-        
         # Save the updated team dataframe with predictions
         df_teams.to_pickle(os.path.join(final_folder, "teams.pkl"))
-
+        
         print("Let's merge the two DataFrames...")
         # Combine initial team and player data
         df_final = return_final_dataframe(season, final_folder)
@@ -143,22 +140,17 @@ def create_dfs():
         
         print(f"Completed {season}")
 
-import pandas as pd
-import os
-
-# --- CONFIGURAZIONE ---
-FOLDER = "C:/Users/franc/OneDrive/Desktop/Github/FDSProject-FantaPredictor/final_data"  # Il tuo percorso
-# Nota: Ho escluso la stagione 2020-2021 dalla lista come da tue specifiche
-SEASONS = ["2017-2018", "2018-2019", "2019-2020", "2021-2022", "2022-2023", "2023-2024", "2024-2025"]
 
 def count_statistics():
-    print(f"--- ANALISI DIMENSIONI DATASET ---\n")
+    """
+    Counts the players and the rows in the dataset to insert exact numbers in the report
+    """
+    print(f"--- DATASET DIMENSIONS ---\n")
     
-    # Inizializziamo i contatori globali
     global_unique_ids = set()
     total_raw_rows = 0
     
-    # Dizionari per i raggruppamenti (Train/Val/Test)
+    # Dictionaries for groups
     stats_by_split = {
         'Training': {'rows': 0, 'ids': set()},
         'Validation': {'rows': 0, 'ids': set()},
@@ -169,30 +161,27 @@ def count_statistics():
         file_path = os.path.join(FOLDER, f"season{season}", "FinalDF_player.pkl")
         
         if not os.path.exists(file_path):
-            print(f"⚠️ File non trovato per {season}: {file_path}")
+            print(f"File not found for {season}: {file_path}!!")
             continue
             
-        # Carica il dataframe
         df = pd.read_pickle(file_path)
         
-        # Filtra i portieri se non sono già stati rimossi (opzionale, ma sicuro)
+        # Filter out goalkeepers that have not been removed yet (just to be sure)
         if 'Role' in df.columns:
-            df = df[df['Role'] != 'P'] # Assumendo 'P' per portiere o 'GK'
+            df = df[df['Role'] != 'P'] 
         elif 'Pos' in df.columns:
             df = df[df['Pos'] != 'GK']
 
-        # Calcoli per la stagione corrente
+        # Calculations for current season
         n_rows = len(df)
         unique_players = df['Player_id'].unique()
         n_unique = len(unique_players)
         
-        # Aggiorna i totali globali
         total_raw_rows += n_rows
         global_unique_ids.update(unique_players)
         
-        print(f"📅 Stagione {season}: {n_rows} righe | {n_unique} giocatori unici")
+        print(f"Season {season}: {n_rows} rows | {n_unique} unique players")
 
-        # --- ASSEGNAZIONE SPLIT (Logica basata sul tuo report) ---
         if season == "2023-2024":
             split = "Validation"
         elif season == "2024-2025":
@@ -204,22 +193,20 @@ def count_statistics():
         stats_by_split[split]['ids'].update(unique_players)
 
     print("\n" + "="*40)
-    print("   RISULTATI FINALI PER IL REPORT")
+    print("FINAL RESULTS")
     print("="*40)
     
-    print(f"\n🔢 TOTALE COMPLESSIVO (Intero Dataset):")
-    print(f"   - Totale Osservazioni (Righe): {total_raw_rows}")
-    print(f"   - Totale Giocatori Unici:      {len(global_unique_ids)}")
+    print(f"\nENTIRE DATSET:")
+    print(f"   - Total Rows: {total_raw_rows}")
+    print(f"   - Total unique players:      {len(global_unique_ids)}")
     
-    print(f"\n📊 DETTAGLIO PER SPLIT:")
+    print(f"\n SPLIT:")
     for split_name, data in stats_by_split.items():
-        # Calcolo approssimativo sequenze (righe - n_past * giocatori)
-        # È una stima, per il numero esatto usa il codice delle sequenze
         print(f"   > {split_name}:")
-        print(f"     - Righe Grezze:    {data['rows']}")
-        print(f"     - Giocatori Unici: {len(data['ids'])}")
+        print(f"     - Rows:    {data['rows']}")
+        print(f"     - Unique Players: {len(data['ids'])}")
 
 
 if __name__ == "__main__":
-    count_statistics()
-    # create_dfs()
+    #count_statistics()
+    create_dfs()

@@ -12,9 +12,8 @@ import time
 pd.set_option('display.max_rows', None)
 
 
-###### CHANGE THESE VALUES!!!
-FOLDER = "C:/Users/franc/OneDrive/Desktop/Github/FDSProject-FantaPredictor/final_data"  # Put your folder that will contain all the data
-SEASON = '2024-2025'  # Choose the season 
+FOLDER = "C:/Users/franc/OneDrive/Desktop/Github/FDSProject-FantaPredictor/final_data"  
+SEASON = '2024-2025' 
 
 final_folder = os.path.join(FOLDER, f"season{SEASON}")
 os.makedirs(final_folder, exist_ok=True)

@@ -23,7 +23,7 @@ pd.set_option('display.max_rows', None)
 FOLDER = "C:/Users/franc/OneDrive/Desktop/Github/FDSProject-FantaPredictor/final_data"  # Put your folder that will contain all the data
 SEASONS = ["2017-2018", "2018-2019", "2019-2020", "2021-2022", "2022-2023", "2023-2024", "2024-2025"] 
 
-N_PAST = 5
+N_PAST = 4
 M_FUTURE = 1
 SCALER_TYPE = "robust"
 ROLE = "Role_D"

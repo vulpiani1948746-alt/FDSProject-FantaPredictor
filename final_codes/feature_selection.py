@@ -37,12 +37,12 @@ def drop_useless_features(df):
     Removes specific columns deemed redundant or potential data leakage.
     """
     cols_to_drop = [
-        "PKatt",             # Redundant if Penalties Scored is used
-        "Player_npxG",       # Highly correlated with Total xG
-        "Cmp_x",             # Detailed passing stats (often noisy)
+        "PKatt",          
+        "Player_npxG",    
+        "Cmp_x",         
         "Att_x",
         "Carries",
-        "Voto_Statistico",   # Removing external ratings to rely on raw stats
+        "Voto_Statistico", 
         "Voto_Italia"
     ]
 
